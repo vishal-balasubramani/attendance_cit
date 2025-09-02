@@ -21,85 +21,101 @@ class DBHelper {
     final dbPath = p.join(dir.path, 'attendance.db');
     return openDatabase(
       dbPath,
-      version: 1,
+      version: 2, // Updated version to trigger migration
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE users (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE,
-            password TEXT,
-            role TEXT
-          );
-        ''');
-        await db.execute('''
-          CREATE TABLE sections (
-            id TEXT PRIMARY KEY,
-            code TEXT UNIQUE,
-            name TEXT
-          );
-        ''');
-        await db.execute('''
-          CREATE TABLE students (
-            id TEXT PRIMARY KEY,
-            reg_no TEXT UNIQUE,
-            name TEXT,
-            gender TEXT,
-            quota TEXT,
-            section_id TEXT,
-            FOREIGN KEY(section_id) REFERENCES sections(id)
-          );
-        ''');
-        await db.execute('''
-          CREATE TABLE attendance_records (
-            id TEXT PRIMARY KEY,
-            student_id TEXT,
-            section_id TEXT,
-            date TEXT,
-            slot TEXT,
-            status TEXT, -- Present/Absent
-            time TEXT,
-            source TEXT, -- advisor/coordinator
-            created_at TEXT,
-            synced INTEGER DEFAULT 0
-          );
-        ''');
-
-        // Seed users
-        await db.insert('users', {
-          'id': 'u1', 'username': 'advisor1', 'password': 'pass123', 'role': 'advisor'
-        });
-        await db.insert('users', {
-          'id': 'u2', 'username': 'coord1', 'password': 'pass123', 'role': 'coordinator'
-        });
-        await db.insert('users', {
-          'id': 'u3', 'username': 'hod1', 'password': 'pass123', 'role': 'hod'
-        });
-
-        // Seed sections
-        await db.insert('sections', {'id': 's1', 'code': 'CS-P', 'name': 'Computer Science - P'});
-        await db.insert('sections', {'id': 's2', 'code': 'CSE-O', 'name': 'CSE - O'});
-        await db.insert('sections', {'id': 's3', 'code': 'CSE-Q', 'name': 'CSE - Q'});
-
-        // Seed 10 students per section
-        Future<void> seedTen(String sectionId, String prefix) async {
-          for (int i = 1; i <= 10; i++) {
-            final sid = '${sectionId}_$i';
-            await db.insert('students', {
-              'id': sid,
-              'reg_no': '$prefix${i.toString().padLeft(3, '0')}',
-              'name': 'Student $prefix$i',
-              'gender': (i % 2 == 0) ? 'F' : 'M',
-              'quota': (i % 3 == 0) ? 'MQ' : 'GQ',
-              'section_id': sectionId,
-            });
-          }
+        await _createTables(db);
+        await _seedData(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // Add od_status column to existing attendance_records table
+          await db.execute('''
+            ALTER TABLE attendance_records ADD COLUMN od_status TEXT DEFAULT 'Normal';
+          ''');
         }
-
-        await seedTen('s1', '24CS-P-');
-        await seedTen('s2', '24CSE-O-');
-        await seedTen('s3', '24CSE-Q-');
       },
     );
+  }
+
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT
+      );
+    ''');
+    await db.execute('''
+      CREATE TABLE sections (
+        id TEXT PRIMARY KEY,
+        code TEXT UNIQUE,
+        name TEXT
+      );
+    ''');
+    await db.execute('''
+      CREATE TABLE students (
+        id TEXT PRIMARY KEY,
+        reg_no TEXT UNIQUE,
+        name TEXT,
+        gender TEXT,
+        quota TEXT,
+        section_id TEXT,
+        FOREIGN KEY(section_id) REFERENCES sections(id)
+      );
+    ''');
+    await db.execute('''
+      CREATE TABLE attendance_records (
+        id TEXT PRIMARY KEY,
+        student_id TEXT,
+        section_id TEXT,
+        date TEXT,
+        slot TEXT,
+        status TEXT, -- Present/Absent
+        od_status TEXT DEFAULT 'Normal', -- Normal/OD
+        time TEXT,
+        source TEXT, -- advisor/coordinator
+        created_at TEXT,
+        synced INTEGER DEFAULT 0
+      );
+    ''');
+  }
+
+  Future<void> _seedData(Database db) async {
+    // Seed users
+    await db.insert('users', {
+      'id': 'u1', 'username': 'advisor1', 'password': 'pass123', 'role': 'advisor'
+    });
+    await db.insert('users', {
+      'id': 'u2', 'username': 'coord1', 'password': 'pass123', 'role': 'coordinator'
+    });
+    await db.insert('users', {
+      'id': 'u3', 'username': 'hod1', 'password': 'pass123', 'role': 'hod'
+    });
+
+    // Seed sections
+    await db.insert('sections', {'id': 's1', 'code': 'CS-P', 'name': 'Computer Science - P'});
+    await db.insert('sections', {'id': 's2', 'code': 'CSE-O', 'name': 'CSE - O'});
+    await db.insert('sections', {'id': 's3', 'code': 'CSE-Q', 'name': 'CSE - Q'});
+
+    // Seed 10 students per section
+    Future<void> seedTen(String sectionId, String prefix) async {
+      for (int i = 1; i <= 10; i++) {
+        final sid = '${sectionId}_$i';
+        await db.insert('students', {
+          'id': sid,
+          'reg_no': '$prefix${i.toString().padLeft(3, '0')}',
+          'name': 'Student $prefix$i',
+          'gender': (i % 2 == 0) ? 'F' : 'M',
+          'quota': (i % 3 == 0) ? 'MQ' : 'GQ',
+          'section_id': sectionId,
+        });
+      }
+    }
+
+    await seedTen('s1', '24CS-P-');
+    await seedTen('s2', '24CSE-O-');
+    await seedTen('s3', '24CSE-Q-');
   }
 
   // Dummy Auth
@@ -134,6 +150,7 @@ class DBHelper {
     required String date,
     required String slot,
     required String status, // Present/Absent
+    String odStatus = 'Normal', // Normal/OD
     required String time,
     required String source, // advisor/coordinator
   }) async {
@@ -157,6 +174,7 @@ class DBHelper {
         'date': date,
         'slot': slot,
         'status': status,
+        'od_status': odStatus,
         'time': time,
         'source': source,
         'created_at': now,
@@ -172,7 +190,7 @@ class DBHelper {
     if (s.isEmpty) return [];
     final sectionId = s.first['id'] as String;
     final sql = '''
-      SELECT st.name, st.reg_no, ar.slot, ar.status, ar.time
+      SELECT st.name, st.reg_no, ar.slot, ar.status, ar.od_status, ar.time
       FROM attendance_records ar
       INNER JOIN students st ON st.id = ar.student_id
       WHERE ar.section_id=? AND ar.date=?
@@ -186,12 +204,75 @@ class DBHelper {
     final total = rows.length;
     final present = rows.where((r) => (r['status'] as String) == 'Present').length;
     final absent = total - present;
+    final od = rows.where((r) => (r['od_status'] as String?) == 'OD').length;
     final percent = total == 0 ? 0.0 : (present * 100.0 / total);
     return {
       'total': total,
       'present': present,
       'absent': absent,
+      'od': od,
       'percent': percent,
+    };
+  }
+
+  /// Get cumulative attendance data for all sections on a specific date
+  Future<List<Map<String, dynamic>>> getCumulativeAttendanceByDate(String date) async {
+    final db = await database;
+    final sql = '''
+      SELECT 
+        sec.code as section_code,
+        st.name, 
+        st.reg_no, 
+        ar.slot, 
+        ar.status, 
+        ar.od_status, 
+        ar.time
+      FROM attendance_records ar
+      INNER JOIN students st ON st.id = ar.student_id
+      INNER JOIN sections sec ON sec.id = ar.section_id
+      WHERE ar.date=?
+      ORDER BY sec.code ASC, st.reg_no ASC, ar.slot ASC;
+    ''';
+    return db.rawQuery(sql, [date]);
+  }
+
+  /// Get cumulative summary for all sections on a specific date
+  Future<Map<String, dynamic>> getCumulativeSummary(String date) async {
+    final rows = await getCumulativeAttendanceByDate(date);
+    final total = rows.length;
+    final present = rows.where((r) => (r['status'] as String) == 'Present').length;
+    final absent = total - present;
+    final od = rows.where((r) => (r['od_status'] as String?) == 'OD').length;
+    final percent = total == 0 ? 0.0 : (present * 100.0 / total);
+
+    // Section-wise breakdown
+    final sectionBreakdown = <String, Map<String, int>>{};
+    for (final row in rows) {
+      final sectionCode = row['section_code'] as String;
+      final status = row['status'] as String;
+      final odStatus = row['od_status'] as String? ?? 'Normal';
+
+      sectionBreakdown[sectionCode] ??= {'total': 0, 'present': 0, 'absent': 0, 'od': 0};
+      sectionBreakdown[sectionCode]!['total'] = sectionBreakdown[sectionCode]!['total']! + 1;
+
+      if (status == 'Present') {
+        sectionBreakdown[sectionCode]!['present'] = sectionBreakdown[sectionCode]!['present']! + 1;
+      } else {
+        sectionBreakdown[sectionCode]!['absent'] = sectionBreakdown[sectionCode]!['absent']! + 1;
+      }
+
+      if (odStatus == 'OD') {
+        sectionBreakdown[sectionCode]!['od'] = sectionBreakdown[sectionCode]!['od']! + 1;
+      }
+    }
+
+    return {
+      'total': total,
+      'present': present,
+      'absent': absent,
+      'od': od,
+      'percent': percent,
+      'sectionBreakdown': sectionBreakdown,
     };
   }
 

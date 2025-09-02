@@ -56,6 +56,195 @@ class _AdvisorHomePageState extends State<AdvisorHomePage> {
   }
 }
 
+class AdvisorReportPage extends StatefulWidget {
+  final String sectionCode;
+  final String date;
+  const AdvisorReportPage({super.key, required this.sectionCode, required this.date});
+
+  @override
+  State<AdvisorReportPage> createState() => _AdvisorReportPageState();
+}
+
+class _AdvisorReportPageState extends State<AdvisorReportPage> {
+  List<Map<String, dynamic>> rows = [];
+  Map<String, dynamic> summary = {'total': 0, 'present': 0, 'absent': 0, 'od': 0, 'percent': 0.0};
+
+  Future<void> _load() async {
+    rows = await DBHelper().getAttendanceForSectionByDate(widget.sectionCode, widget.date);
+    summary = await DBHelper().getSectionSummary(widget.sectionCode, widget.date);
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _getDisplayStatus(Map<String, dynamic> record) {
+    final status = record['status'] as String? ?? 'Present';
+    final odStatus = record['od_status'] as String? ?? 'Normal';
+
+    if (status == 'Absent') {
+      return 'Absent';
+    } else if (odStatus == 'OD') {
+      return 'OD';
+    } else {
+      return 'Present';
+    }
+  }
+
+  Color _getStatusColor(String displayStatus) {
+    switch (displayStatus) {
+      case 'Present':
+        return Colors.green;
+      case 'Absent':
+        return Colors.red;
+      case 'OD':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Report – ${widget.sectionCode}'),
+        actions: [
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+            tooltip: 'Close Report',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'Attendance Report',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Section: ${widget.sectionCode} | Date: ${widget.date}',
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                _StatBox(label: 'Total', value: '${summary['total']}'),
+                const SizedBox(width: 8),
+                _StatBox(label: 'Present', value: '${summary['present']}'),
+                const SizedBox(width: 8),
+                _StatBox(label: 'Absent', value: '${summary['absent']}'),
+                const SizedBox(width: 8),
+                _StatBox(label: 'OD', value: '${summary['od']}'),
+                const SizedBox(width: 8),
+                _StatBox(label: 'Percent', value: '${(summary['percent'] as double).toStringAsFixed(1)}%'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          Expanded(
+            child: rows.isEmpty
+                ? const Center(child: Text('No data available'))
+                : ListView.separated(
+              itemCount: rows.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final r = rows[i];
+                final displayStatus = _getDisplayStatus(r);
+                return ListTile(
+                  title: Text(r['name'] ?? ''),
+                  subtitle: Text(r['reg_no'] ?? ''),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(displayStatus).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _getStatusColor(displayStatus), width: 1),
+                    ),
+                    child: Text(
+                      displayStatus,
+                      style: TextStyle(
+                        color: _getStatusColor(displayStatus),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back to Sections'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  backgroundColor: Colors.grey[600],
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatBox extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _StatBox({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(.06),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Text(label,
+                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            const SizedBox(height: 8),
+            Text(value, style: const TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class AdvisorMarkPage extends StatefulWidget {
   final String sectionCode;
   const AdvisorMarkPage({super.key, required this.sectionCode});
@@ -70,8 +259,10 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
   String slot = 'FN';
   List<Map<String, dynamic>> students = [];
   Map<String, String> status = {}; // studentId -> Present/Absent
+  Map<String, String> odStatus = {}; // studentId -> Normal/OD
   bool loading = true;
   bool discovering = false;
+  bool attendanceSubmitted = false; // Track if attendance has been submitted
 
   // Nearby
   final Strategy strategy = Strategy.P2P_STAR;
@@ -86,27 +277,36 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
 
   Future<void> _loadStudents() async {
     final list = await DBHelper().getStudentsBySectionCode(widget.sectionCode);
-    // Default all Present
-    final map = <String, String>{};
+    // Default all Present and Normal (not OD)
+    final statusMap = <String, String>{};
+    final odStatusMap = <String, String>{};
     for (var s in list) {
-      map[s['id'] as String] = 'Present';
+      statusMap[s['id'] as String] = 'Present';
+      odStatusMap[s['id'] as String] = 'Normal';
     }
     setState(() {
       students = list;
-      status = map;
+      status = statusMap;
+      odStatus = odStatusMap;
       loading = false;
     });
   }
 
   Future<void> _markAll(String newStatus) async {
-    final map = <String, String>{};
+    final statusMap = <String, String>{};
+    final odStatusMap = <String, String>{};
     for (var s in students) {
-      map[s['id'] as String] = newStatus;
+      statusMap[s['id'] as String] = newStatus;
+      // Reset OD status when marking all
+      odStatusMap[s['id'] as String] = 'Normal';
     }
-    setState(() => status = map);
+    setState(() {
+      status = statusMap;
+      odStatus = odStatusMap;
+    });
   }
 
-  // Save locally so advisor device also has a record (and to support “retry send” UX if you add it later)
+  // Save locally so advisor device also has a record (and to support "retry send" UX if you add it later)
   Future<void> _saveLocally() async {
     final nowIso = DateTime.now().toIso8601String();
     for (var s in students) {
@@ -117,6 +317,7 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
         date: date,
         slot: slot,
         status: status[id] ?? 'Present',
+        odStatus: odStatus[id] ?? 'Normal',
         time: nowIso,
         source: 'advisor',
       );
@@ -135,6 +336,7 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
         'Name': s['name'],
         'RegNo': s['reg_no'],
         'Status': status[id] ?? 'Present',
+        'ODStatus': odStatus[id] ?? 'Normal',
         'Time': DateTime.now().toIso8601String(),
       };
     }).toList();
@@ -189,10 +391,11 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
                   await Nearby().disconnectFromEndpoint(id);
                   await Nearby().stopDiscovery();
                   if (mounted) {
+                    setState(() => attendanceSubmitted = true);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Attendance sent to Coordinator')),
                     );
-                    Navigator.pop(context); // end session for Advisor
+                    // Don't pop immediately - let user view report first
                   }
                 }
               },
@@ -203,7 +406,7 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
         onEndpointLost: (id) {},
       );
 
-      // Add a discovery timeout so it doesn’t hang forever
+      // Add a discovery timeout so it doesn't hang forever
       _discoverTimeout?.cancel();
       _discoverTimeout = Timer(const Duration(seconds: 20), () async {
         if (mounted && discovering) {
@@ -283,20 +486,51 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
                 final s = students[i];
                 final id = s['id'] as String;
                 final st = status[id] ?? 'Present';
+                final od = odStatus[id] ?? 'Normal';
+                final isAbsent = st == 'Absent';
+
                 return ListTile(
                   title: Text('${s['name']}'),
                   subtitle: Text('${s['reg_no']}'),
-                  trailing: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: (st == 'Absent') ? Colors.red : Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        status[id] = (st == 'Present') ? 'Absent' : 'Present';
-                      });
-                    },
-                    child: Text(st == 'Present' ? 'PRESENT' : 'ABSENT'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // OD Button - only visible when not absent
+                      if (!isAbsent) ...[
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: (od == 'OD') ? Colors.blue : Colors.grey[300],
+                            foregroundColor: (od == 'OD') ? Colors.white : Colors.black87,
+                            minimumSize: const Size(50, 36),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              odStatus[id] = (od == 'Normal') ? 'OD' : 'Normal';
+                            });
+                          },
+                          child: const Text('OD'),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      // Present/Absent Button
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: (st == 'Absent') ? Colors.red : Colors.green,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(80, 36),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            status[id] = (st == 'Present') ? 'Absent' : 'Present';
+                            // Reset OD status when marking as absent
+                            if (status[id] == 'Absent') {
+                              odStatus[id] = 'Normal';
+                            }
+                          });
+                        },
+                        child: Text(st == 'Present' ? 'PRESENT' : 'ABSENT'),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -305,17 +539,40 @@ class _AdvisorMarkPageState extends State<AdvisorMarkPage> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: ElevatedButton.icon(
-                onPressed: discovering ? null : _submitToCoordinator,
-                icon: const Icon(Icons.send),
-                label: Text(discovering ? 'Sending…' : 'Submit Attendance'),
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+              child: Column(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: discovering ? null : _submitToCoordinator,
+                    icon: const Icon(Icons.send),
+                    label: Text(discovering ? 'Sending…' : 'Submit Attendance'),
+                    style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+                  ),
+                  if (attendanceSubmitted) ...[
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => AdvisorReportPage(
+                            sectionCode: widget.sectionCode,
+                            date: date,
+                          ),
+                        ));
+                      },
+                      icon: const Icon(Icons.analytics),
+                      label: const Text('View Report'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
         ],
       ),
-
     );
   }
 }
