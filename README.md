@@ -1,4 +1,4 @@
-# attendance_cit
+# attendance_cit.
 
 A new Flutter project.
 
